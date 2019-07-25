@@ -46,6 +46,7 @@
 #include <sys/time.h>
 #include <time.h>
 #include <arpa/inet.h>
+#include <stdbool.h> /* required for the definition of bool in C99 */
 #endif
 
 /* This assumes you have the mavlink headers on your include path
@@ -72,7 +73,7 @@ int main(int argc, char* argv[])
 	//struct sockaddr_in fromAddr;
 	uint8_t buf[BUFFER_LENGTH];
 	ssize_t recsize;
-	socklen_t fromlen;
+	socklen_t fromlen = sizeof(gcAddr);
 	int bytes_sent;
 	mavlink_message_t msg;
 	uint16_t len;
@@ -115,7 +116,12 @@ int main(int argc, char* argv[])
     } 
 	
 	/* Attempt to make it non blocking */
+#if (defined __QNX__) | (defined __QNXNTO__)
 	if (fcntl(sock, F_SETFL, O_NONBLOCK | FASYNC) < 0)
+#else
+	if (fcntl(sock, F_SETFL, O_NONBLOCK | O_ASYNC) < 0)
+#endif
+
     {
 		fprintf(stderr, "error setting nonblocking: %s\n", strerror(errno));
 		close(sock);
@@ -193,7 +199,7 @@ uint64_t microsSinceEpoch()
 	uint64_t micros = 0;
 	
 	clock_gettime(CLOCK_REALTIME, &time);  
-	micros = (uint64_t)time.tv_sec * 100000 + time.tv_nsec/1000;
+	micros = (uint64_t)time.tv_sec * 1000000 + time.tv_nsec/1000;
 	
 	return micros;
 }

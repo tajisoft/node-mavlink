@@ -1,4 +1,8 @@
-project (mavlink NONE)
+project (mavlink)
+
+if (NOT DEFINED MAVLINK_SOURCE_DIR)
+    set(MAVLINK_SOURCE_DIR ${CMAKE_SOURCE_DIR})
+endif ()
 
 # settings
 cmake_minimum_required (VERSION 2.8.2)
@@ -23,7 +27,7 @@ option(WITH_BUILD_STATIC "Build preferring static linking." ON)
 set(ROOT_THREAD TRUE CACHE INTERNAL "Is this the top level of the recursion?")
 
 # modules
-list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake ${CMAKE_SOURCE_DIR}/cmake/arkcmake)
+list(APPEND CMAKE_MODULE_PATH ${MAVLINK_SOURCE_DIR}/cmake ${MAVLINK_SOURCE_DIR}/cmake/arkcmake)
 include(DefineCMakeDefaults)
 include(CheckIncludeFiles)
 include(CheckFunctionExists)
@@ -35,9 +39,15 @@ include(CheckLibraryExists)
 #include(CheckCSourceCompiles)
 include(ExternalProjectWithFilename)
 
+if (UNIX)
+    include(GNUInstallDirs)
+    set(LIB_INSTALL_DIR "lib${LIB_SUFFIX}" CACHE PATH "Installation path for libraries")
+endif ()
+
+
 # spawn new cmake to build deps
 if (WITH_BUILD_DEPS AND ROOT_THREAD)
-    execute_process(COMMAND ${CMAKE_COMMAND} "${CMAKE_SOURCE_DIR}"
+    execute_process(COMMAND ${CMAKE_COMMAND} "${MAVLINK_SOURCE_DIR}"
         "-DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}"
         "-DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}"
         "-DWITH_BUILD_DEPS=${WITH_BUILD_DEPS}"
@@ -114,41 +124,41 @@ install(FILES ${CMAKE_BINARY_DIR}/config.h DESTINATION include/${PROJECT_NAME} C
 macro(generateMavlink version definitions)
     foreach(definition ${definitions})
         set(targetName ${definition}-v${version})
-        set(definitionAbsPath ${CMAKE_SOURCE_DIR}/message_definitions/v${version}/${definition})
+        set(definitionAbsPath ${MAVLINK_SOURCE_DIR}/message_definitions/v${version}/${definition})
         message(STATUS "processing: ${definitionAbsPath}")
         add_custom_command( 
             OUTPUT ${targetName}-stamp
-            COMMAND ${PYTHON_EXECUTABLE} ${mavgen} --lang=C --wire-protocol=${version}
+            COMMAND PYTHONPATH=$ENV{PYTHONPATH}:${CMAKE_CURRENT_SOURCE_DIR} ${PYTHON_EXECUTABLE} -m pymavlink.tools.mavgen --lang=C --wire-protocol=${version}
                 --output=include/v${version} ${definitionAbsPath}
             COMMAND touch ${targetName}-stamp
-            DEPENDS ${definitionAbsPath} ${mavgen}
             )
         add_custom_target(${targetName} ALL DEPENDS ${targetName}-stamp)
     endforeach()
 endmacro()
 
 # build
-set(mavgen ${CMAKE_SOURCE_DIR}/pymavlink/generator/mavgen.py)
+set(mavgen -m pymavlink.tools.mavgen)
 set(v0.9Definitions
     ardupilotmega.xml
     common.xml
     minimal.xml
-    pixhawk.xml
     slugs.xml
     test.xml
     ualberta.xml
     )
 generateMavlink("0.9" "${v0.9Definitions}")
 set(v1.0Definitions
+    ASLUAV.xml
     ardupilotmega.xml
+    autoquad.xml
     common.xml
     matrixpilot.xml
     minimal.xml
-    pixhawk.xml
+    paparazzi.xml
+    python_array_test.xml
     slugs.xml
     test.xml
     ualberta.xml
-    sensesoar.xml
     )
 generateMavlink("1.0" "${v1.0Definitions}")
 
@@ -164,13 +174,17 @@ endif()
 # install files
 install(DIRECTORY ${CMAKE_BINARY_DIR}/include/ DESTINATION include/${PROJECT_NAME} COMPONENT Dev FILES_MATCHING PATTERN "*.h*")
 install(DIRECTORY ${CMAKE_BINARY_DIR}/src/ DESTINATION share/${PROJECT_NAME} COMPONENT Dev FILES_MATCHING PATTERN "*.c*")
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/share/${PROJECT_NAME} DESTINATION share COMPONENT Dev FILES_MATCHING PATTERN "*.c*")
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/pymavlink DESTINATION "share/pyshared" COMPONENT Dev)
+install(DIRECTORY ${MAVLINK_SOURCE_DIR}/share/${PROJECT_NAME} DESTINATION share COMPONENT Dev FILES_MATCHING PATTERN "*.c*")
+if (UNIX)
+    install(DIRECTORY ${MAVLINK_SOURCE_DIR}/pymavlink DESTINATION ${CMAKE_INSTALL_LIBDIR}/python${PYTHON_VERSION_MAJOR}.${PYTHON_VERSION_MINOR}/site-packages COMPONENT Dev)
+else ()
+    install(DIRECTORY ${MAVLINK_SOURCE_DIR}/pymavlink DESTINATION "share/pyshared" COMPONENT Dev)
+endif ()
 
 configure_file(pc.in ${PROJECT_NAME}.pc)
 install(FILES
     ${PROJECT_BINARY_DIR}/${PROJECT_NAME}.pc
-    DESTINATION "lib/pkgconfig" COMPONENT Dev
+    DESTINATION lib${LIB_SUFFIX}/pkgconfig COMPONENT Dev
     )
 
 ### packaging
@@ -187,16 +201,16 @@ endif()
 
 # set NSIS image
 if (WIN32)
-    set(CPACK_PACKAGE_ICON "${CMAKE_SOURCE_DIR}/cmake/mavlink.bmp")
+    set(CPACK_PACKAGE_ICON "${MAVLINK_SOURCE_DIR}/cmake/mavlink.bmp")
 endif()
 
 # add file extensions and set resource files
 configure_file("COPYING" "COPYING.txt" COPYONLY)
 configure_file("README.md" "README.md" COPYONLY)
-set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_BINARY_DIR}/COPYING.txt")
-set(CPACK_RESOURCE_FILE_README "${CMAKE_BINARY_DIR}/README.md")
+set(CPACK_RESOURCE_FILE_LICENSE "${MAVLINK_SOURCE_DIR}/COPYING")
+set(CPACK_RESOURCE_FILE_README "${MAVLINK_SOURCE_DIR}/README.md")
 set(CPACK_PACKAGE_DESCRIPTION_FILE "${CPACK_RESOURCE_FILE_README}")
-set(CPACK_RESOURCE_FILE_WELCOME "${CMAKE_SOURCE_DIR}/cmake/WELCOME.txt")
+set(CPACK_RESOURCE_FILE_WELCOME "${MAVLINK_SOURCE_DIR}/cmake/WELCOME.txt")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "mavlink message marshalling library")
 set(CPACK_PACKAGE_VENDOR ${PROJECT_CONTACT_VENDOR})
 set(CPACK_PACKAGE_CONTACT "${PROJECT_CONTACT_EMAIL}")
